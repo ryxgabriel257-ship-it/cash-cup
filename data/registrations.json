@@ -1,0 +1,34 @@
+{
+  "teams": [
+    {
+      "id": "1773872586745",
+      "teamName": "gwesgsgs",
+      "discord": "gssssssssgs",
+      "phone": "hshhsdgsd",
+      "playerOne": "gsgsgsd",
+      "playerTwo": "gsdgsdgsgd",
+      "status": "rejected",
+      "createdAt": "2026-03-18T22:23:06.745Z"
+    },
+    {
+      "id": "1773872983224",
+      "teamName": "hubjnrhusrdbbfx",
+      "discord": "dvbsdgsgs",
+      "phone": "sbsbbsdbsdvsd",
+      "playerOne": "vbsvsdvsdvdsv",
+      "playerTwo": "sxbdfdsbsbdsdbssd",
+      "status": "rejected",
+      "createdAt": "2026-03-18T22:29:43.224Z"
+    },
+    {
+      "id": "1773873141869",
+      "teamName": "brayan",
+      "discord": "alau",
+      "phone": "8943287438274283",
+      "playerOne": "brayan",
+      "playerTwo": "alau",
+      "status": "rejected",
+      "createdAt": "2026-03-18T22:32:21.869Z"
+    }
+  ]
+}

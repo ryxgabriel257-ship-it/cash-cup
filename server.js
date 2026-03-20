@@ -6,9 +6,8 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const MAX_TEAMS = 8;
 
-// pode trocar depois no Render por variáveis de ambiente
-const ADMIN_USER = process.env.ADMIN_USER || "admin";
-const ADMIN_PASS = process.env.ADMIN_PASS || "1234";
+const ADMIN_USER = process.env.ADMIN_USER || "soudafafa";
+const ADMIN_PASS = process.env.ADMIN_PASS || "soudafafa123";
 
 app.use(cors());
 app.use(express.json());
@@ -51,7 +50,7 @@ app.get("/api/status", async (req, res) => {
       maxTeams: MAX_TEAMS
     });
   } catch (err) {
-    console.error("Erro em /api/status:", err);
+    console.error("ERRO EM /api/status:", err);
     res.status(500).json({
       success: false,
       message: "Erro ao buscar status."
@@ -64,7 +63,10 @@ app.get("/api/team-check", async (req, res) => {
     const teamName = String(req.query.teamName || "").trim().toLowerCase();
 
     if (!teamName) {
-      return res.json({ success: true, exists: false });
+      return res.json({
+        success: true,
+        exists: false
+      });
     }
 
     const result = await pool.query(
@@ -77,7 +79,7 @@ app.get("/api/team-check", async (req, res) => {
       exists: result.rows[0].total > 0
     });
   } catch (err) {
-    console.error("Erro em /api/team-check:", err);
+    console.error("ERRO EM /api/team-check:", err);
     res.status(500).json({
       success: false,
       exists: false
@@ -97,18 +99,9 @@ app.post("/api/register", async (req, res) => {
     }
 
     const duplicate = await pool.query(
-  `INSERT INTO teams (
-    team_name, discord, phone, player_one, player_two, status, created_at
-  ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-  [
-    teamName.trim(),
-    discord.trim(),
-    phone.trim(),
-    playerOne.trim(),
-    playerTwo.trim(),
-    "pending"
-  ]
-);
+      "SELECT COUNT(*)::int AS total FROM teams WHERE LOWER(team_name) = $1",
+      [teamName.trim().toLowerCase()]
+    );
 
     if (duplicate.rows[0].total > 0) {
       return res.status(400).json({
@@ -126,29 +119,32 @@ app.post("/api/register", async (req, res) => {
       });
     }
 
-    // gera id e created_at no backend, sem depender do default da tabela
-    
-    const createdAt = new Date().toISOString();
-
     await pool.query(
       `INSERT INTO teams (
-        id, team_name, discord, phone, player_one, player_two, status, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [id, teamName.trim(), discord.trim(), phone.trim(), playerOne.trim(), playerTwo.trim(), "pending", createdAt]
+        team_name, discord, phone, player_one, player_two, status, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+      [
+        teamName.trim(),
+        discord.trim(),
+        phone.trim(),
+        playerOne.trim(),
+        playerTwo.trim(),
+        "pending"
+      ]
     );
 
     return res.json({
       success: true,
       message: "Equipe registrada com sucesso."
     });
-  
-    } catch (err) {
-  console.error("ERRO EM /api/status:", err);
-  res.status(500).json({
-    success: false,
-    message: "Erro ao buscar status."
-  });
-}
+  } catch (err) {
+    console.error("ERRO EM /api/register:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Não foi possível concluir a inscrição."
+    });
+  }
+});
 
 app.post("/api/admin/login", (req, res) => {
   const { user, pass } = req.body || {};
@@ -178,7 +174,7 @@ app.get("/api/admin/registrations", requireAdmin, async (req, res) => {
       teams: teamsResult.rows
     });
   } catch (err) {
-    console.error("Erro em /api/admin/registrations:", err);
+    console.error("ERRO EM /api/admin/registrations:", err);
     return res.status(500).json({
       success: false,
       message: "Erro ao carregar inscrições."
@@ -232,7 +228,7 @@ app.post("/api/admin/update-status", requireAdmin, async (req, res) => {
       message: "Status atualizado."
     });
   } catch (err) {
-    console.error("Erro em /api/admin/update-status:", err);
+    console.error("ERRO EM /api/admin/update-status:", err);
     return res.status(500).json({
       success: false,
       message: "Erro ao atualizar."

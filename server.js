@@ -18,6 +18,10 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+pool.on("error", (err) => {
+  console.error("ERRO NO POOL POSTGRES:", err);
+});
+
 function requireAdmin(req, res, next) {
   const user = req.headers["x-admin-user"];
   const pass = req.headers["x-admin-pass"];
@@ -50,7 +54,7 @@ app.get("/api/status", async (req, res) => {
       maxTeams: MAX_TEAMS
     });
   } catch (err) {
-    console.error("ERRO EM /api/status:", err);
+    console.error("ERRO REAL EM /api/status:", err);
     res.status(500).json({
       success: false,
       message: "Erro ao buscar status."

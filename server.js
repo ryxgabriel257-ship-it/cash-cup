@@ -1,155 +1,236 @@
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
 const { Pool } = require("pg");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
 const MAX_TEAMS = 8;
+
+// pode trocar depois no Render por variáveis de ambiente
+const ADMIN_USER = process.env.ADMIN_USER || "admin";
+const ADMIN_PASS = process.env.ADMIN_PASS || "1234";
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
 
-// 🔥 CONEXÃO COM SUPABASE
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
-// =============================
-// STATUS (VAGAS)
-// =============================
+function requireAdmin(req, res, next) {
+  const user = req.headers["x-admin-user"];
+  const pass = req.headers["x-admin-pass"];
+
+  if (user === ADMIN_USER && pass === ADMIN_PASS) {
+    return next();
+  }
+
+  return res.status(401).json({
+    success: false,
+    message: "Acesso negado."
+  });
+}
+
+async function getApprovedCount() {
+  const result = await pool.query(
+    "SELECT COUNT(*)::int AS total FROM teams WHERE status = 'approved'"
+  );
+  return result.rows[0].total;
+}
+
 app.get("/api/status", async (req, res) => {
   try {
-    const result = await pool.query(
-      "SELECT COUNT(*)::int as total FROM teams WHERE status = 'approved'"
-    );
-
-    const approved = result.rows[0].total;
-    const remaining = MAX_TEAMS - approved;
+    const approved = await getApprovedCount();
 
     res.json({
       success: true,
       approvedTeams: approved,
-      remainingSlots: remaining < 0 ? 0 : remaining,
+      remainingSlots: Math.max(0, MAX_TEAMS - approved),
       maxTeams: MAX_TEAMS
     });
   } catch (err) {
-    res.status(500).json({ success: false });
+    console.error("Erro em /api/status:", err);
+    res.status(500).json({
+      success: false,
+      message: "Erro ao buscar status."
+    });
   }
 });
 
-// =============================
-// VERIFICAR NOME DUPLICADO
-// =============================
 app.get("/api/team-check", async (req, res) => {
   try {
-    const name = req.query.teamName.toLowerCase();
+    const teamName = String(req.query.teamName || "").trim().toLowerCase();
+
+    if (!teamName) {
+      return res.json({ success: true, exists: false });
+    }
 
     const result = await pool.query(
-      "SELECT COUNT(*)::int as total FROM teams WHERE LOWER(team_name) = $1",
-      [name]
+      "SELECT COUNT(*)::int AS total FROM teams WHERE LOWER(team_name) = $1",
+      [teamName]
     );
 
     res.json({
+      success: true,
       exists: result.rows[0].total > 0
     });
-  } catch {
-    res.status(500).json({ exists: false });
+  } catch (err) {
+    console.error("Erro em /api/team-check:", err);
+    res.status(500).json({
+      success: false,
+      exists: false
+    });
   }
 });
 
-// =============================
-// REGISTRAR EQUIPE
-// =============================
 app.post("/api/register", async (req, res) => {
   try {
-    const { teamName, discord, phone, playerOne, playerTwo } = req.body;
+    const { teamName, discord, phone, playerOne, playerTwo } = req.body || {};
 
     if (!teamName || !discord || !phone || !playerOne || !playerTwo) {
-      return res.json({ success: false, message: "Preencha tudo" });
+      return res.status(400).json({
+        success: false,
+        message: "Preencha tudo."
+      });
     }
 
-    // verificar duplicado
-    const dup = await pool.query(
-      "SELECT COUNT(*)::int as total FROM teams WHERE LOWER(team_name) = $1",
-      [teamName.toLowerCase()]
+    const duplicate = await pool.query(
+      "SELECT COUNT(*)::int AS total FROM teams WHERE LOWER(team_name) = $1",
+      [teamName.trim().toLowerCase()]
     );
 
-    if (dup.rows[0].total > 0) {
-      return res.json({ success: false, message: "Nome já existe" });
+    if (duplicate.rows[0].total > 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Nome já existe."
+      });
     }
 
-    // verificar vagas
-    const count = await pool.query(
-      "SELECT COUNT(*)::int as total FROM teams WHERE status = 'approved'"
-    );
+    const approved = await getApprovedCount();
 
-    if (count.rows[0].total >= MAX_TEAMS) {
-      return res.json({ success: false, message: "Sem vagas" });
+    if (approved >= MAX_TEAMS) {
+      return res.status(400).json({
+        success: false,
+        message: "Sem vagas."
+      });
     }
+
+    // gera id e created_at no backend, sem depender do default da tabela
+    const id = Date.now();
+    const createdAt = new Date().toISOString();
 
     await pool.query(
-      `INSERT INTO teams (team_name, discord, phone, player_one, player_two, status)
-       VALUES ($1,$2,$3,$4,$5,'pending')`,
-      [teamName, discord, phone, playerOne, playerTwo]
+      `INSERT INTO teams (
+        id, team_name, discord, phone, player_one, player_two, status, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [id, teamName.trim(), discord.trim(), phone.trim(), playerOne.trim(), playerTwo.trim(), "pending", createdAt]
     );
 
-    res.json({ success: true });
-  } catch {
-    res.json({ success: false });
+    return res.json({
+      success: true,
+      message: "Equipe registrada com sucesso."
+    });
+  } catch (err) {
+    console.error("Erro em /api/register:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Não foi possível concluir a inscrição."
+    });
   }
 });
 
-// =============================
-// ADMIN LOGIN SIMPLES
-// =============================
 app.post("/api/admin/login", (req, res) => {
-  const { user, pass } = req.body;
+  const { user, pass } = req.body || {};
 
-  if (user === "admin" && pass === "1234") {
+  if (user === ADMIN_USER && pass === ADMIN_PASS) {
     return res.json({ success: true });
   }
 
-  res.json({ success: false });
+  return res.status(401).json({
+    success: false,
+    message: "Falha no login."
+  });
 });
 
-// =============================
-// LISTAR EQUIPES
-// =============================
-app.get("/api/admin/teams", async (req, res) => {
+app.get("/api/admin/registrations", requireAdmin, async (req, res) => {
   try {
-    const result = await pool.query(
+    const teamsResult = await pool.query(
       "SELECT * FROM teams ORDER BY created_at DESC"
     );
 
-    res.json(result.rows);
-  } catch {
-    res.status(500).json([]);
+    const approved = await getApprovedCount();
+
+    return res.json({
+      success: true,
+      approvedTeams: approved,
+      remainingSlots: Math.max(0, MAX_TEAMS - approved),
+      teams: teamsResult.rows
+    });
+  } catch (err) {
+    console.error("Erro em /api/admin/registrations:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Erro ao carregar inscrições."
+    });
   }
 });
 
-// =============================
-// APROVAR / REJEITAR
-// =============================
-app.post("/api/admin/update", async (req, res) => {
+app.post("/api/admin/update-status", requireAdmin, async (req, res) => {
   try {
-    const { id, status } = req.body;
+    const { id, status } = req.body || {};
+
+    if (!id || !["pending", "approved", "rejected"].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Dados inválidos."
+      });
+    }
+
+    if (status === "approved") {
+      const approved = await getApprovedCount();
+
+      const currentTeam = await pool.query(
+        "SELECT status FROM teams WHERE id = $1",
+        [id]
+      );
+
+      if (currentTeam.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Equipe não encontrada."
+        });
+      }
+
+      const alreadyApproved = currentTeam.rows[0].status === "approved";
+
+      if (!alreadyApproved && approved >= MAX_TEAMS) {
+        return res.status(400).json({
+          success: false,
+          message: "Não há mais vagas disponíveis."
+        });
+      }
+    }
 
     await pool.query(
       "UPDATE teams SET status = $1 WHERE id = $2",
       [status, id]
     );
 
-    res.json({ success: true });
-  } catch {
-    res.json({ success: false });
+    return res.json({
+      success: true,
+      message: "Status atualizado."
+    });
+  } catch (err) {
+    console.error("Erro em /api/admin/update-status:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Erro ao atualizar."
+    });
   }
 });
 
-// =============================
 app.listen(PORT, () => {
   console.log("Servidor rodando na porta " + PORT);
 });

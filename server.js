@@ -141,14 +141,14 @@ app.post("/api/register", async (req, res) => {
       success: true,
       message: "Equipe registrada com sucesso."
     });
-  } catch (err) {
-    console.error("Erro em /api/register:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Não foi possível concluir a inscrição."
-    });
-  }
-});
+  
+    } catch (err) {
+  console.error("ERRO EM /api/status:", err);
+  res.status(500).json({
+    success: false,
+    message: "Erro ao buscar status."
+  });
+}
 
 app.post("/api/admin/login", (req, res) => {
   const { user, pass } = req.body || {};

@@ -97,9 +97,18 @@ app.post("/api/register", async (req, res) => {
     }
 
     const duplicate = await pool.query(
-      "SELECT COUNT(*)::int AS total FROM teams WHERE LOWER(team_name) = $1",
-      [teamName.trim().toLowerCase()]
-    );
+  `INSERT INTO teams (
+    team_name, discord, phone, player_one, player_two, status, created_at
+  ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+  [
+    teamName.trim(),
+    discord.trim(),
+    phone.trim(),
+    playerOne.trim(),
+    playerTwo.trim(),
+    "pending"
+  ]
+);
 
     if (duplicate.rows[0].total > 0) {
       return res.status(400).json({
@@ -118,7 +127,7 @@ app.post("/api/register", async (req, res) => {
     }
 
     // gera id e created_at no backend, sem depender do default da tabela
-    const id = Date.now();
+    
     const createdAt = new Date().toISOString();
 
     await pool.query(

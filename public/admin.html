@@ -1,1 +1,69 @@
-<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width, initial-scale=1.0'><title>Admin • Cash Cup</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;background:#0a0a0a;color:#fff;padding:26px}.wrap{max-width:1180px;margin:0 auto}.card{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:20px;padding:24px;margin-bottom:20px}h1,h2{color:#00ff88;margin-bottom:14px}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}input{width:100%;padding:14px 16px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:#111;color:#fff}button{padding:12px 18px;border:none;border-radius:12px;font-weight:800;cursor:pointer}.primary{background:#00ff88;color:#000}.danger{background:#ff5a5a;color:#fff}.secondary{background:#2a2a2a;color:#fff}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px}.msg{display:none;padding:12px 14px;border-radius:12px;margin-top:14px}.msg.show{display:block}.ok{background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.22);color:#9fffd0}.err{background:rgba(255,90,90,.08);border:1px solid rgba(255,90,90,.22);color:#ffbaba}table{width:100%;border-collapse:collapse}th,td{padding:12px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;vertical-align:top}.status{display:inline-block;padding:6px 10px;border-radius:999px;font-size:12px;font-weight:800}.pending{background:rgba(255,210,90,.12);color:#ffe69a}.approved{background:rgba(0,255,136,.12);color:#9fffd0}.rejected{background:rgba(255,90,90,.12);color:#ffbaba}.actions{display:flex;gap:8px;flex-wrap:wrap}small{color:#aaa}@media(max-width:900px){.grid{grid-template-columns:1fr}table,thead,tbody,th,td,tr{display:block}thead{display:none}tr{padding:14px 0;border-bottom:1px solid rgba(255,255,255,.08)}td{padding:10px 0}}</style></head><body><div class='wrap'><div class='card' id='loginCard'><h1>Painel Admin • Cash Cup</h1><div class='grid'><input id='user' placeholder='Usuário'><input id='pass' type='password' placeholder='Senha'></div><div style='margin-top:16px'><button class='primary' onclick='login()'>Entrar</button></div><div class='msg' id='loginMsg'></div><div style='margin-top:10px'></div></div><div class='card' id='panelCard' style='display:none'><div class='toolbar'><div><h2>Equipes registradas</h2><small>Somente equipes aprovadas contam nas 8 vagas.</small></div><div><button class='secondary' onclick='loadRegistrations()'>Atualizar</button><button class='secondary' onclick='logout()'>Sair</button></div></div><div class='toolbar' id='stats'></div><div class='msg' id='panelMsg'></div><div style='overflow:auto'><table><thead><tr><th>Equipe</th><th>Status</th><th>Discord</th><th>Celular</th><th>Dupla</th><th>Ações</th></tr></thead><tbody id='rows'></tbody></table></div></div></div><script>function el(id){return document.getElementById(id)}function headers(){return {'x-admin-user':sessionStorage.getItem('adminUser')||'','x-admin-pass':sessionStorage.getItem('adminPass')||''}}function showMsg(id,msg,type){const b=el(id);b.textContent=msg;b.className=`msg show ${type}`}function clearMsg(id){const b=el(id);b.textContent='';b.className='msg'}async function login(){clearMsg('loginMsg');try{const res=await fetch('/api/admin/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user:el('user').value.trim(),pass:el('pass').value.trim()})});const data=await res.json();if(!res.ok||!data.success){showMsg('loginMsg',data.message||'Falha no login.','err');return}sessionStorage.setItem('adminUser',el('user').value.trim());sessionStorage.setItem('adminPass',el('pass').value.trim());el('loginCard').style.display='none';el('panelCard').style.display='block';loadRegistrations()}catch{showMsg('loginMsg','Erro ao conectar com o servidor.','err')}}function logout(){sessionStorage.removeItem('adminUser');sessionStorage.removeItem('adminPass');el('panelCard').style.display='none';el('loginCard').style.display='block'}function badge(status){const cls=status==='approved'?'approved':status==='rejected'?'rejected':'pending';const txt=status==='approved'?'Aprovada':status==='rejected'?'Recusada':'Pendente';return `<span class="status ${cls}">${txt}</span>`}async function updateStatus(id,status){clearMsg('panelMsg');try{const res=await fetch('/api/admin/update',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,status})});const data=await res.json();if(!res.ok||!data.success){showMsg('panelMsg',data.message||'Erro ao atualizar.','err');return}showMsg('panelMsg',data.message,'ok');loadRegistrations()}catch{showMsg('panelMsg','Erro ao conectar com o servidor.','err')}}async function loadRegistrations(){clearMsg('panelMsg');try{const res=await fetch('/api/admin/teams',{headers:headers()});const data=await res.json();if(!res.ok||!data.success){showMsg('panelMsg',data.message||'Acesso negado.','err');if(res.status===401)logout();return}el('stats').innerHTML=`<div><b>Aprovadas:</b> ${data.approvedTeams} &nbsp; | &nbsp; <b>Vagas restantes:</b> ${data.remainingSlots}/8</div>`;el('rows').innerHTML=data.teams.map(t=>`<tr><td><b>${t.teamName}</b><br><small>${new Date(t.createdAt).toLocaleString('pt-BR')}</small></td><td>${badge(t.status)}</td><td>${t.discord}</td><td>${t.phone}</td><td>${t.playerOne}<br>${t.playerTwo}</td><td><div class='actions'><button class='primary' onclick="updateStatus('${t.id}','approved')">Aprovar</button><button class='secondary' onclick="updateStatus('${t.id}','pending')">Pendente</button><button class='danger' onclick="updateStatus('${t.id}','rejected')">Recusar</button></div></td></tr>`).join('')||`<tr><td colspan='6'>Nenhuma equipe registrada ainda.</td></tr>`}catch{showMsg('panelMsg','Erro ao carregar inscrições.','err')}}if(sessionStorage.getItem('adminUser')&&sessionStorage.getItem('adminPass')){el('loginCard').style.display='none';el('panelCard').style.display='block';loadRegistrations()}</script></body></html>
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin</title>
+</head>
+<body style="background:black;color:white;font-family:sans-serif">
+
+<h2>Admin</h2>
+
+<input id="token" placeholder="Digite o token">
+<button onclick="login()">Entrar</button>
+
+<div id="painel" style="display:none">
+  <h3>Equipes</h3>
+  <button onclick="carregar()">Atualizar</button>
+  <div id="lista"></div>
+</div>
+
+<script>
+function login() {
+  const token = document.getElementById("token").value;
+  localStorage.setItem("adminToken", token);
+  document.getElementById("painel").style.display = "block";
+  carregar();
+}
+
+function headers() {
+  return {
+    "Content-Type": "application/json",
+    "x-admin-token": localStorage.getItem("adminToken")
+  };
+}
+
+async function carregar() {
+  const res = await fetch("/api/admin/registrations", {
+    headers: headers()
+  });
+
+  const data = await res.json();
+
+  if (!data.success) {
+    alert(data.message);
+    return;
+  }
+
+  document.getElementById("lista").innerHTML =
+    data.teams.map(t => `
+      <div style="margin:10px;border:1px solid #555;padding:10px">
+        <b>${t.team_name}</b><br>
+        ${t.player_one} / ${t.player_two}<br>
+        Status: ${t.status}<br><br>
+        <button onclick="aprovar('${t.id}')">Aprovar</button>
+      </div>
+    `).join("");
+}
+
+async function aprovar(id) {
+  await fetch("/api/admin/update-status", {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({ id, status: "approved" })
+  });
+
+  carregar();
+}
+</script>
+
+</body>
+</html>

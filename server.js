@@ -1,26 +1,32 @@
 const express = require("express");
 const cors = require("cors");
-const { Pool } = require("pg");
+const { createClient } = require("@supabase/supabase-js");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const MAX_TEAMS = 8;
 
-const ADMIN_USER = process.env.ADMIN_USER || "soudafafa";
-const ADMIN_PASS = process.env.ADMIN_PASS || "soudafafa123";
+const ADMIN_USER = process.env.ADMIN_USER || "admin";
+const ADMIN_PASS = process.env.ADMIN_PASS || "1234";
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static("public"));
 
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
-});
+if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error("ERRO: variáveis do Supabase não encontradas.");
+  console.error("SUPABASE_URL:", process.env.SUPABASE_URL ? "OK" : "FALTANDO");
+  console.error(
+    "SUPABASE_SERVICE_ROLE_KEY:",
+    process.env.SUPABASE_SERVICE_ROLE_KEY ? "OK" : "FALTANDO"
+  );
+  process.exit(1);
+}
 
-pool.on("error", (err) => {
-  console.error("ERRO NO POOL POSTGRES:", err);
-});
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 function requireAdmin(req, res, next) {
   const user = req.headers["x-admin-user"];
@@ -37,10 +43,13 @@ function requireAdmin(req, res, next) {
 }
 
 async function getApprovedCount() {
-  const result = await pool.query(
-    "SELECT COUNT(*)::int AS total FROM teams WHERE status = 'approved'"
-  );
-  return result.rows[0].total;
+  const { count, error } = await supabase
+    .from("teams")
+    .select("*", { count: "exact", head: true })
+    .eq("status", "approved");
+
+  if (error) throw error;
+  return count || 0;
 }
 
 app.get("/api/status", async (req, res) => {
@@ -54,7 +63,7 @@ app.get("/api/status", async (req, res) => {
       maxTeams: MAX_TEAMS
     });
   } catch (err) {
-    console.error("ERRO REAL EM /api/status:", err);
+    console.error("ERRO EM /api/status:", err);
     res.status(500).json({
       success: false,
       message: "Erro ao buscar status."
@@ -64,7 +73,7 @@ app.get("/api/status", async (req, res) => {
 
 app.get("/api/team-check", async (req, res) => {
   try {
-    const teamName = String(req.query.teamName || "").trim().toLowerCase();
+    const teamName = String(req.query.teamName || "").trim();
 
     if (!teamName) {
       return res.json({
@@ -73,14 +82,16 @@ app.get("/api/team-check", async (req, res) => {
       });
     }
 
-    const result = await pool.query(
-      "SELECT COUNT(*)::int AS total FROM teams WHERE LOWER(team_name) = $1",
-      [teamName]
-    );
+    const { data, error } = await supabase
+      .from("teams")
+      .select("id")
+      .ilike("team_name", teamName);
+
+    if (error) throw error;
 
     res.json({
       success: true,
-      exists: result.rows[0].total > 0
+      exists: Array.isArray(data) && data.length > 0
     });
   } catch (err) {
     console.error("ERRO EM /api/team-check:", err);
@@ -102,12 +113,20 @@ app.post("/api/register", async (req, res) => {
       });
     }
 
-    const duplicate = await pool.query(
-      "SELECT COUNT(*)::int AS total FROM teams WHERE LOWER(team_name) = $1",
-      [teamName.trim().toLowerCase()]
-    );
+    const cleanTeam = teamName.trim();
+    const cleanDiscord = discord.trim();
+    const cleanPhone = phone.trim();
+    const cleanP1 = playerOne.trim();
+    const cleanP2 = playerTwo.trim();
 
-    if (duplicate.rows[0].total > 0) {
+    const { data: dupData, error: dupError } = await supabase
+      .from("teams")
+      .select("id")
+      .ilike("team_name", cleanTeam);
+
+    if (dupError) throw dupError;
+
+    if (dupData && dupData.length > 0) {
       return res.status(400).json({
         success: false,
         message: "Nome já existe."
@@ -123,19 +142,18 @@ app.post("/api/register", async (req, res) => {
       });
     }
 
-    await pool.query(
-      `INSERT INTO teams (
-        team_name, discord, phone, player_one, player_two, status, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
-      [
-        teamName.trim(),
-        discord.trim(),
-        phone.trim(),
-        playerOne.trim(),
-        playerTwo.trim(),
-        "pending"
-      ]
-    );
+    const { error } = await supabase.from("teams").insert([
+      {
+        team_name: cleanTeam,
+        discord: cleanDiscord,
+        phone: cleanPhone,
+        player_one: cleanP1,
+        player_two: cleanP2,
+        status: "pending"
+      }
+    ]);
+
+    if (error) throw error;
 
     return res.json({
       success: true,
@@ -165,9 +183,12 @@ app.post("/api/admin/login", (req, res) => {
 
 app.get("/api/admin/registrations", requireAdmin, async (req, res) => {
   try {
-    const teamsResult = await pool.query(
-      "SELECT * FROM teams ORDER BY created_at DESC"
-    );
+    const { data, error } = await supabase
+      .from("teams")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) throw error;
 
     const approved = await getApprovedCount();
 
@@ -175,7 +196,7 @@ app.get("/api/admin/registrations", requireAdmin, async (req, res) => {
       success: true,
       approvedTeams: approved,
       remainingSlots: Math.max(0, MAX_TEAMS - approved),
-      teams: teamsResult.rows
+      teams: data || []
     });
   } catch (err) {
     console.error("ERRO EM /api/admin/registrations:", err);
@@ -200,19 +221,15 @@ app.post("/api/admin/update-status", requireAdmin, async (req, res) => {
     if (status === "approved") {
       const approved = await getApprovedCount();
 
-      const currentTeam = await pool.query(
-        "SELECT status FROM teams WHERE id = $1",
-        [id]
-      );
+      const { data: currentTeam, error: currentError } = await supabase
+        .from("teams")
+        .select("status")
+        .eq("id", id)
+        .single();
 
-      if (currentTeam.rows.length === 0) {
-        return res.status(404).json({
-          success: false,
-          message: "Equipe não encontrada."
-        });
-      }
+      if (currentError) throw currentError;
 
-      const alreadyApproved = currentTeam.rows[0].status === "approved";
+      const alreadyApproved = currentTeam.status === "approved";
 
       if (!alreadyApproved && approved >= MAX_TEAMS) {
         return res.status(400).json({
@@ -222,10 +239,12 @@ app.post("/api/admin/update-status", requireAdmin, async (req, res) => {
       }
     }
 
-    await pool.query(
-      "UPDATE teams SET status = $1 WHERE id = $2",
-      [status, id]
-    );
+    const { error } = await supabase
+      .from("teams")
+      .update({ status })
+      .eq("id", id);
+
+    if (error) throw error;
 
     return res.json({
       success: true,

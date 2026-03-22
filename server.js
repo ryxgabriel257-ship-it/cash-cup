@@ -6,7 +6,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const MAX_TEAMS = 8;
 
-// login e senha do admin
 const ADMIN_USER = process.env.ADMIN_USER || "admin";
 const ADMIN_PASS = process.env.ADMIN_PASS || "123456";
 
@@ -16,11 +15,6 @@ app.use(express.static("public"));
 
 if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
   console.error("ERRO: variáveis do Supabase não encontradas.");
-  console.error("SUPABASE_URL:", process.env.SUPABASE_URL ? "OK" : "FALTANDO");
-  console.error(
-    "SUPABASE_SERVICE_ROLE_KEY:",
-    process.env.SUPABASE_SERVICE_ROLE_KEY ? "OK" : "FALTANDO"
-  );
   process.exit(1);
 }
 
@@ -77,10 +71,7 @@ app.get("/api/team-check", async (req, res) => {
     const teamName = String(req.query.teamName || "").trim();
 
     if (!teamName) {
-      return res.json({
-        success: true,
-        exists: false
-      });
+      return res.json({ success: true, exists: false });
     }
 
     const { data, error } = await supabase
@@ -249,7 +240,7 @@ app.post("/api/admin/update-status", requireAdmin, async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Status atualizado."
+      message: "Status atualizado com sucesso."
     });
   } catch (err) {
     console.error("ERRO EM /api/admin/update-status:", err);

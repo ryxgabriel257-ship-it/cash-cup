@@ -6,8 +6,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const MAX_TEAMS = 8;
 
+// login e senha do admin
 const ADMIN_USER = process.env.ADMIN_USER || "admin";
-const ADMIN_PASS = process.env.ADMIN_PASS || "1234";
+const ADMIN_PASS = process.env.ADMIN_PASS || "123456";
 
 app.use(cors());
 app.use(express.json());
@@ -32,14 +33,14 @@ function requireAdmin(req, res, next) {
   const user = req.headers["x-admin-user"];
   const pass = req.headers["x-admin-pass"];
 
-  if (user === ADMIN_USER && pass === ADMIN_PASS) {
-    return next();
+  if (user !== ADMIN_USER || pass !== ADMIN_PASS) {
+    return res.status(401).json({
+      success: false,
+      message: "Acesso negado."
+    });
   }
 
-  return res.status(401).json({
-    success: false,
-    message: "Acesso negado."
-  });
+  next();
 }
 
 async function getApprovedCount() {
@@ -177,7 +178,7 @@ app.post("/api/admin/login", (req, res) => {
 
   return res.status(401).json({
     success: false,
-    message: "Falha no login."
+    message: "Usuário ou senha inválidos."
   });
 });
 
@@ -202,7 +203,7 @@ app.get("/api/admin/registrations", requireAdmin, async (req, res) => {
     console.error("ERRO EM /api/admin/registrations:", err);
     return res.status(500).json({
       success: false,
-      message: "Erro ao carregar inscrições."
+      message: "Erro ao carregar equipes."
     });
   }
 });
@@ -254,7 +255,7 @@ app.post("/api/admin/update-status", requireAdmin, async (req, res) => {
     console.error("ERRO EM /api/admin/update-status:", err);
     return res.status(500).json({
       success: false,
-      message: "Erro ao atualizar."
+      message: "Erro ao atualizar equipe."
     });
   }
 });
